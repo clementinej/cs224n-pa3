@@ -16,12 +16,58 @@ import cs224n.ling.Tree;
 
 public class RuleBased implements CoreferenceSystem {
     
+    HashMap<Pair<String, String>, Double> statistics = 
+    	new HashMap<Pair<String, String>, Double>();
     @Override
     public void train(Collection<Pair<Document, List<Entity>>> trainingData) {
-	// TODO Auto-generated method stub
+	for(Pair<Document, List<Entity>> pair : trainingData){
+	    //--Get Variables
+	    Document doc = pair.getFirst();
+	    List<Entity> clusters = pair.getSecond();
+	    List<Mention> mentions = doc.getMentions();
+
+	    //--Iterate Over Coreferent Mention Pairs
+	    for(Entity e : clusters){
+		for(Pair<Mention, Mention> mentionPair : e.orderedMentionPairs()){
+		    // if (!mentionPair.getFirst().headToken().isNoun() ||
+		    // 	!mentionPair.getSecond().headToken().isNoun())
+		    // 	continue;			
+		    if (mentionPair.getFirst().headToken().isPronoun() ||
+		    	mentionPair.getSecond().headToken().isPronoun())
+		    	continue;			
+
+		    String m = mentionPair.getFirst().headWord();
+		    String n = mentionPair.getSecond().headWord();
+		    Pair<String, String> candidate = null;
+		    if (m.compareToIgnoreCase(n) != 0){
+			if (m.compareToIgnoreCase(n) > 0)
+			    candidate = new Pair<String, String>(m.toLowerCase(),n.toLowerCase());
+			else
+			    candidate = new Pair<String, String>(n.toLowerCase(),m.toLowerCase());
+		    }
+		    if (candidate == null) continue;
+		    if (!statistics.containsKey(candidate))
+			statistics.put(candidate, 1.0);
+		    else
+			statistics.put(candidate, statistics.get(candidate)+1);
+		}
+	    }
+	}
+	statisticsUpdate();
 	
     }
     
+    private void statisticsUpdate(){
+	double sum = 0;
+	for (Double count : statistics.values())
+	    sum += count.doubleValue();
+	System.out.println(sum);
+	for (Pair<String, String> candidate : statistics.keySet())
+	    statistics.put(candidate, statistics.get(candidate)/sum);
+	// for (Pair<String, String> c : statistics.keySet())
+	//     System.out.println(c.getFirst()+ " " + c.getSecond() + " " + statistics.get(c));
+    }
+
     @Override
     public List<ClusteredMention> runCoreference(Document doc) {
 	List<ClusteredMention> mentions = new ArrayList<ClusteredMention>();
@@ -41,19 +87,25 @@ public class RuleBased implements CoreferenceSystem {
 	    mentionClusters.add(temp);
 	}
 	// First Pass
+	statisticsBased(mentionClusters);	
 	exactMatch(mentionClusters);
 	// matchAppositives(doc, mentionClusters);
 	// matchAcronym(mentionClusters);
 	// predicateNominative(doc, mentionClusters);
-	matchStrictHead(mentionClusters);
+	// matchStrictHead(mentionClusters);
 	exactHeadMatch(mentionClusters);
 	relaxedHeadMatch(mentionClusters);
 	matchSpeaker(mentionClusters);
 	pronounProcessing(doc, mentionClusters);
+	
 
 	createMentions(mentionClusters, mentions);
 	return mentions;
     }
+
+		
+
+
 
     private void createMentions(Set<Set<Mention>> mentionClusters, List<ClusteredMention> mentions){
 	for(Set<Mention> a : mentionClusters){
@@ -76,6 +128,31 @@ public class RuleBased implements CoreferenceSystem {
     }
     
 
+    private void statisticsBased(Set<Set<Mention>> mentionClusters){
+	for(Set<Mention> a : mentionClusters){
+	    for(Set<Mention> b : mentionClusters){
+		if(a.equals(b)) continue;
+		loop: for(Mention m : a){
+		    for(Mention n : b){
+			if(m.equals(n)) continue;
+			Pair<String, String> candidate = null;
+			if (m.headWord().compareToIgnoreCase(n.headWord()) != 0){
+			    if (m.headWord().compareToIgnoreCase(n.headWord()) > 0)
+				candidate = new Pair<String, String>(m.headWord().toLowerCase(),n.headWord().toLowerCase());
+			    else
+				candidate = new Pair<String, String>(n.headWord().toLowerCase(),m.headWord().toLowerCase());
+			}
+			if (candidate == null) continue;
+			if (statistics.containsKey(candidate)){
+			    merge(a,b);
+			    break loop;
+			}
+		    }
+		}
+	    }
+	}
+    }
+
     private void exactMatch(Set<Set<Mention>> mentionClusters){
 	for(Set<Mention> a : mentionClusters){
 	    for(Set<Mention> b : mentionClusters){
@@ -83,6 +160,9 @@ public class RuleBased implements CoreferenceSystem {
 		loop: for(Mention m : a){
 		    for(Mention n : b){
 			if(m.equals(n)) continue;
+			if (m.headToken().isPronoun() ||
+			    n.headToken().isPronoun())
+			    continue;
 			if(m.gloss().equalsIgnoreCase(n.gloss())){
 			    merge(a,b);
 			    break loop;
@@ -99,7 +179,7 @@ public class RuleBased implements CoreferenceSystem {
 		if(a.equals(b)) continue;
 		loop: for(Mention m : a){
 		    for(Mention n : b){
-			if(m.gloss().contains(n.gloss()) || n.gloss().contains(m.gloss())) continue;
+			//if(m.gloss().contains(n.gloss()) || n.gloss().contains(m.gloss())) continue;
 			if(m.headWord().equalsIgnoreCase(n.headWord())){
 			    merge(a,b);
 			    break loop;
