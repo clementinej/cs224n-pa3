@@ -4,6 +4,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.*;
 
+
 import cs224n.coref.ClusteredMention;
 import cs224n.coref.Pronoun;
 import cs224n.coref.Document;
@@ -11,7 +12,7 @@ import cs224n.coref.Entity;
 import cs224n.util.Pair;
 import cs224n.coref.Mention;
 import cs224n.coref.*;
-
+import cs224n.ling.Tree;
 
 public class RuleBased implements CoreferenceSystem {
     
@@ -41,9 +42,9 @@ public class RuleBased implements CoreferenceSystem {
 	}
 	// First Pass
 	exactMatch(mentionClusters);
-	//matchAppositives(doc, mentionClusters);
-	//matchAcronym(mentionClusters);
-	//predicateNominative(mentionClusters);
+	// matchAppositives(doc, mentionClusters);
+	// matchAcronym(mentionClusters);
+	// predicateNominative(doc, mentionClusters);
 	matchStrictHead(mentionClusters);
 	exactHeadMatch(mentionClusters);
 	relaxedHeadMatch(mentionClusters);
@@ -141,8 +142,15 @@ public class RuleBased implements CoreferenceSystem {
 			if(m.equals(n)) continue;
 			if(!m.parse.getLabel().equals("NNP") ||
 			   !n.parse.getLabel().equals("NNP"))  continue;
-			if(m.gloss().equals(getAcronym(n.text(), 1)) ||
-			   n.gloss().equals(getAcronym(m.text(), 1))){
+			if(m.gloss().equalsIgnoreCase(getAcronym(n.text(), 1)) ||
+			   n.gloss().equalsIgnoreCase(getAcronym(m.text(), 1))){
+			    System.out.println("Reached here");
+			    merge(a,b);
+			    break loop;
+			}
+
+			if(m.gloss().equalsIgnoreCase(getAcronym(n.text(), 0)) ||
+			   n.gloss().equalsIgnoreCase(getAcronym(m.text(), 0))){
 			    System.out.println("Reached here");
 			    merge(a,b);
 			    break loop;
@@ -166,13 +174,16 @@ public class RuleBased implements CoreferenceSystem {
     }
 
 
-    private void predicateNominative(Set<Set<Mention>> mentionClusters){
+    private void predicateNominative(Document doc, Set<Set<Mention>> mentionClusters){
 	for(Set<Mention> a : mentionClusters){
 	    for(Set<Mention> b : mentionClusters){
 		if(a.equals(b)) continue;
 		loop: for(Mention m : a){
 		    for(Mention n : b){
 			if(m.equals(n)) continue;
+			if(doc.indexOfSentence(m.sentence) !=
+			   doc.indexOfSentence(n.sentence))
+			    continue;
 			if(m.sentence.gloss().contains(m.gloss()+" is "+n.gloss())){ 
 			    merge(a,b);
 			    break loop;
@@ -181,6 +192,16 @@ public class RuleBased implements CoreferenceSystem {
 		}
 	    }
 	}
+    }
+
+    private Tree<String> searchSubTree(Tree<String> parent, Tree<String> child){
+	for (Tree<String> tree : parent.getChildren()){
+	    if (tree.equals(child))
+		return parent;
+	    Tree<String> temp = searchSubTree(tree, child);
+	    if (temp != null) return temp;
+	}
+	return null;
     }
 
     private void matchAppositives(Document doc, Set<Set<Mention>> mentionClusters){
@@ -192,12 +213,24 @@ public class RuleBased implements CoreferenceSystem {
 			if(m.equals(n)) continue;
 			if(!m.parse.getLabel().equals("NP") ||
 			   !n.parse.getLabel().equals("NP"))  continue;
-			// if(doc.indexOfMention(m)-doc.indexOfMention(n) ==
-			//    1){ //&&
-			//    //doc.getMentions().get(doc.indexOfMention(n) + 1).headToken().posTag().equals(",")){
+			if(doc.indexOfSentence(m.sentence) !=
+			   doc.indexOfSentence(n.sentence))
+			    continue;
+			Tree<String> subTree =
+			    searchSubTree(m.sentence.parse, m.parse);
+			if (subTree == null ||
+			    !subTree.getLabel().equals("NP") ||
+			    subTree.getChildren().size() < 3) continue;
+			if (!subTree.getChildren().get(0).equals(m.parse)
+			    ||
+			    !subTree.getChildren().get(2).equals(n.parse)) continue;
+			// // if(doc.indexOfMention(m)-doc.indexOfMention(n) ==
+			// //    1){ //&&
+			// //    //doc.getMentions().get(doc.indexOfMention(n) + 1).headToken().posTag().equals(",")){
 			if(m.sentence.gloss().contains(m.gloss()+" , "+n.gloss())){
 			    // Wrong implementation. Make sure parent is
 			    // NN too, and there are no CC's in the expansion
+			    System.out.println(m.sentence.gloss());
 			    merge(a,b);
 			    break loop;
 			}
